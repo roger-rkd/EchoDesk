@@ -1,11 +1,23 @@
-[![Workflow](https://img.shields.io/badge/%E2%9C%87%EF%B8%8F_Download_Workflow-Import_to_n8n-EA4B71?style=for-the-badge&logoColor=white)](workflow/echodesk-workflow.json)
+<div align="center">
+
+<br />
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0,1a1a2e,16213e,0f3460&height=200&section=header&text=EchoDesk&fontSize=52&fontColor=ffffff&fontAlignY=38&desc=AI-Powered%20Customer%20Feedback%20Pipeline%20%7C%20Groq%20%2B%20n8n%20Automation&descAlignY=58&descSize=14&animation=fadeIn" width="100%" />
+
+<br />
+
+[![Workflow](https://img.shields.io/badge/⬇️_Download_Workflow-Import_to_n8n-EA4B71?style=for-the-badge&logoColor=white)](./workflow/echodesk-workflow.json)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Read_the_Post-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/rohitkumardubey)
 [![Built with n8n](https://img.shields.io/badge/Built_with-n8n-EA4B71?style=for-the-badge&logo=n8n&logoColor=white)](https://n8n.io)
 [![Groq](https://img.shields.io/badge/Powered_by-Groq-F55036?style=for-the-badge&logoColor=white)](https://groq.com)
 
-# EchoDesk
+<br />
 
-> **An automated AI workflow that reads incoming customer feedback, classifies it by sentiment, topic and urgency using structured output, and generates a tailored, context-aware reply, all without manual triage.**
+> **A fully automated AI workflow that reads incoming customer feedback across email and support channels, classifies it by sentiment, topic, and urgency using structured output, then generates a tailored, context-aware reply. No manual triage, no free-text guesswork.**
+
+<br />
+
+</div>
 
 ---
 
@@ -17,7 +29,7 @@
 - [Result](#-result)
 - [Tech Stack](#-tech-stack)
 - [Architecture](#-architecture)
-- [Node Flow](#-node-flow)
+- [Workflow Paths](#-workflow-paths)
 - [Prompt Engineering](#-prompt-engineering)
 - [Structured Output and Retry Logic](#-structured-output-and-retry-logic)
 - [Screenshots](#-screenshots)
@@ -30,63 +42,64 @@
 
 ## 🔍 Situation
 
-Sales and support teams that receive customer feedback across multiple channels face a recurring bottleneck: every message has to be read, categorised, and matched to a response by hand. Sentiment, topic, and urgency are judged inconsistently from one reviewer to the next, and low-priority praise often receives the same turnaround time as a high-urgency billing complaint.
+Sales operations teams receiving customer feedback across multiple channels face a recurring bottleneck. Every message has to be read, categorised, and matched to a response by hand. Sentiment, topic, and urgency get judged inconsistently from one reviewer to the next, and a piece of positive feedback often receives the same turnaround as a high-urgency billing complaint.
 
-This becomes harder to sustain as feedback volume grows, since manual review does not scale and free-form AI responses cannot reliably be parsed into fields a downstream system can act on.
+Free-text AI responses do not solve this on their own. A paragraph of AI-generated analysis still needs to be manually parsed before it can drive routing, reporting, or prioritisation, which defeats the purpose of automating the step in the first place.
 
 ---
 
 ## 🎯 Task
 
-Build an automated pipeline that could:
+Build a production-ready automated pipeline that could:
 
-- **Fetch** customer feedback from a live endpoint across multiple channels (email, support tickets)
-- **Classify** each item by sentiment, topic, urgency, and key issue, in a consistent, machine-readable format
-- **Generate** a reply that adapts its tone and content to the classification, rather than a generic acknowledgement
-- **Validate** AI output against a defined schema, with automatic retry if the model returns malformed data
-- **Route** structured results downstream for reporting, prioritisation, or CRM logging
+- **Fetch** customer feedback from a live endpoint across multiple channels
+- **Classify** each item by sentiment, topic, urgency, and key issue in a consistent, machine-readable format
+- **Validate** the classification against a defined schema, with automatic retry if the model output does not conform
+- **Generate** a reply that adapts its tone and next steps to the classification, rather than a generic acknowledgement
+- **Deliver** the structured result and generated reply back to the source system for logging and grading
 
 ---
 
 ## ⚙️ How It Was Built
 
-The workflow was built in **n8n**, using **Groq** as the AI provider across two purpose-matched open-source models: a smaller model for classification and a larger model for reply generation.
+The entire workflow was built in **n8n**, with **Groq** handling all AI processing across two purpose-matched models that feed into a single output pipeline.
 
 ### System Flow
 
 ```
-Customer Feedback (Academy API)
+Customer Feedback (API)
            │
            ▼
-    [ HTTP Request: GetFeedback ]
+    [ GetFeedback ] ── authenticated GET request
            │
            ▼
-    [ Limit: SetFeedbackItem ]
+   [ SetFeedbackItem ] ── limits to one item for processing
            │
            ▼
- [ Basic LLM Chain: ClassifyFeedback ]
-   Model: gpt-oss-20b
-   Structured Output Parser
-   Retry on Fail (3 attempts)
+ [ ClassifyFeedback ]
+ Model: gpt-oss-20b
+ Structured Output Parser
+ Retry on Fail, 3 attempts
            │
            ▼
-   [ Edit Fields: SetClassificationResult ]
+ [ SetClassificationResult ]
+ extracts sentiment, topic, urgency, key issue
            │
            ▼
- [ Basic LLM Chain: GenerateReply ]
-   Model: gpt-oss-120b
-   Tone adapts to sentiment and urgency
+ [ GenerateReply ]
+ Model: gpt-oss-120b
+ Tone adapts to sentiment and urgency
            │
            ▼
-  [ HTTP Request: SendGeneratedReply ]
+  [ SendGeneratedReply ] ── posts result back to API
 ```
 
 ### Key Engineering Decisions
 
-- **Two models, two jobs.** Classification is a simpler, well-bounded task and runs on a smaller, faster model (gpt-oss-20b). Reply generation needs more nuance and runs on a larger model (gpt-oss-120b). Matching model size to task complexity keeps cost down without sacrificing output quality.
+- **Two models, two jobs.** Classification is a simpler, well-bounded task and runs on a smaller, faster model, gpt-oss-20b. Reply generation needs more nuance and runs on a larger model, gpt-oss-120b. Matching model size to task complexity keeps cost down without sacrificing output quality.
 - **Structured Output Parser over free-text parsing.** Asking the model to write a paragraph and then regex-parsing it out is fragile. Defining a JSON schema up front and validating against it makes the output directly usable by downstream nodes.
-- **Retry on Fail as a safety net.** LLM output occasionally breaks schema even with a parser in place. Three retries with a short wait between attempts resolves the large majority of malformed responses without failing the whole run.
-- **Classification feeds generation.** Rather than treating reply drafting as an isolated step, the classified sentiment, topic, and urgency are passed into the reply prompt, so tone and next steps are grounded in the actual analysis rather than guessed at generically.
+- **Retry on Fail as a safety net.** LLM output occasionally breaks schema even with a parser in place. Three retries with a short wait between attempts resolves the majority of malformed responses without failing the whole run.
+- **Classification feeds generation.** Reply drafting is not treated as an isolated step. Sentiment, topic, and urgency are passed into the reply prompt, so tone and next steps are grounded in the actual analysis rather than guessed at generically.
 - **Header Auth for endpoint access.** Both the feedback source and the reply submission endpoint are authenticated through a shared API key credential plus a per-request assessment ID header, keeping credentials centralised and reusable across nodes.
 
 ---
@@ -107,15 +120,18 @@ Customer Feedback (Academy API)
 
 ## 🛠 Tech Stack
 
+<div align="center">
+
 | Layer | Technology |
 |---|---|
-| Orchestration | n8n |
-| AI Provider | Groq |
-| Classification Model | openai/gpt-oss-20b |
-| Generation Model | openai/gpt-oss-120b |
-| Output Validation | n8n Structured Output Parser |
-| Authentication | Header Auth (API key and assessment ID) |
-| Data Source | REST API (feedback endpoint) |
+| Orchestration | ![n8n](https://img.shields.io/badge/n8n-EA4B71?style=flat-square&logo=n8n&logoColor=white) |
+| AI Provider | ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logoColor=white) |
+| Classification Model | ![gpt-oss-20b](https://img.shields.io/badge/gpt--oss--20b-F55036?style=flat-square&logoColor=white) |
+| Generation Model | ![gpt-oss-120b](https://img.shields.io/badge/gpt--oss--120b-F55036?style=flat-square&logoColor=white) |
+| Authentication | ![Header Auth](https://img.shields.io/badge/Header_Auth-4B5563?style=flat-square&logoColor=white) |
+| Data Source | ![REST API](https://img.shields.io/badge/REST_API-009688?style=flat-square&logoColor=white) |
+
+</div>
 
 ---
 
@@ -151,40 +167,31 @@ Customer Feedback (Academy API)
 
 ---
 
-## 🔀 Node Flow
+## 🔀 Workflow Paths
 
-| Step | Node | Purpose |
-|---|---|---|
-| 1 | `TriggerManual` | Starts the workflow |
-| 2 | `GetFeedback` | Fetches feedback items via authenticated GET request |
-| 3 | `SetFeedbackItem` | Limits processing to a single feedback item |
-| 4 | `ClassifyFeedback` | Classifies sentiment, topic, urgency, and key issue using a structured schema |
-| 5 | `SetClassificationResult` | Extracts and consolidates the parsed classification fields |
-| 6 | `GenerateReply` | Generates a reply, using the classification to set tone and next steps |
-| 7 | `SendGeneratedReply` | Posts the final structured result back to the API |
+### Path A, Classification (gpt-oss-20b)
+
+Handles sentiment, topic, urgency, and key issue extraction. Output is validated against a fixed JSON schema through the Structured Output Parser, with retry on failure configured to catch the occasional malformed response from the smaller model.
+
+### Path B, Reply Generation (gpt-oss-120b)
+
+Runs after classification completes and takes the classified fields as direct input. Tone is set conditionally: empathetic and apologetic for negative sentiment or high urgency, appreciative and warm for positive sentiment, with specific next steps offered for billing or support topics.
+
+Both paths run in sequence within the same pipeline and share the same downstream delivery node.
 
 ---
 
 ## 🧠 Prompt Engineering
 
-Two prompts were tuned independently for their respective tasks.
-
-**Classification prompt**
+Five key decisions shaped the prompt design:
 
 | Decision | Reason |
 |---|---|
 | Fixed category sets for sentiment, topic, and urgency | Prevents free-text drift and keeps output filterable and reportable |
 | Explicit schema example embedded in the system message | Reinforces the Structured Output Parser and reduces malformed responses |
 | One-sentence key issue summary | Gives a fast, human-readable snapshot without reproducing the full message |
-
-**Reply generation prompt**
-
-| Decision | Reason |
-|---|---|
-| Classification passed into the prompt as context | Ties the reply's tone and content directly to the analysis rather than guessing at it |
-| Conditional tone instructions (negative or urgent → empathetic, positive → appreciative) | Produces a reply that reads as considered rather than templated |
-| Topic-based next steps for billing and support | Moves the customer toward resolution instead of a bare acknowledgement |
-| Length capped at 2 to 3 sentences | Keeps replies concise and appropriate for direct customer communication |
+| Classification passed into the reply prompt as context | Ties the reply's tone and content directly to the analysis rather than guessing at it |
+| Reply length capped at 2 to 3 sentences | Keeps replies concise and appropriate for direct customer communication |
 
 ---
 
@@ -207,6 +214,8 @@ If the model returns output that fails to match this schema, the node retries au
 
 **n8n Workflow Canvas**
 
+![n8n Workflow Overview](./assets/workflow-overview.png)
+
 *The full pipeline: feedback retrieval, classification with structured output, and tone-adaptive reply generation, ending in a call back to the feedback API.*
 
 ---
@@ -215,14 +224,14 @@ If the model returns output that fails to match this schema, the node retries au
 
 ### Prerequisites
 
-- An n8n instance (cloud or self-hosted)
+- An n8n instance, cloud or self-hosted
 - A Groq API key, available free at [groq.com](https://groq.com)
 - Access credentials for the feedback source API
 
 ### 1. Import the Workflow
 
 1. Open your n8n instance
-2. Click the three-dot menu and select **Import**
+2. Click the three dots menu (top right) and select **Import**
 3. Select `workflow/echodesk-workflow.json` from this repository
 4. Add your credentials: Header Auth (API key and assessment ID) and Groq API
 5. Activate the workflow
@@ -231,8 +240,8 @@ If the model returns output that fails to match this schema, the node retries au
 
 | Credential | Where to get it | Used in node |
 |---|---|---|
-| Header Auth (API key) | Feedback source provider | `GetFeedback`, `SendGeneratedReply` |
-| Groq API key | [groq.com](https://groq.com) | `ClassifyFeedback`, `GenerateReply` |
+| Header Auth (API key) | Feedback source provider | GetFeedback, SendGeneratedReply |
+| Groq API key | [groq.com](https://groq.com) | ClassifyFeedback, GenerateReply |
 
 ---
 
@@ -243,7 +252,7 @@ If the model returns output that fails to match this schema, the node retries au
 | Single item per run | The current version processes one feedback item at a time via the Limit node |
 | Model determinism | Smaller models are more prone to schema-breaking output, mitigated by retry logic but not eliminated |
 | Language support | Prompts are tuned for English feedback |
-| Channel scope | Currently supports email and support ticket text; does not process voice or attachments |
+| Channel scope | Currently supports email and support ticket text, does not process voice or attachments |
 
 ---
 
@@ -261,10 +270,17 @@ If the model returns output that fails to match this schema, the node retries au
 
 | Resource | URL |
 |---|---|
-| Workflow JSON | `workflow/echodesk-workflow.json` |
+| Workflow JSON | [Download and import](./workflow/echodesk-workflow.json) |
 | Groq | [groq.com](https://groq.com) |
 | n8n Documentation | [docs.n8n.io](https://docs.n8n.io) |
+| Built by | [Rohit Kumar Dubey](https://www.linkedin.com/in/rohitkumardubey) |
 
 ---
 
-*Built by [Rohit Kumar Dubey](https://www.linkedin.com/in/rohitkumardubey)*
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0,0f3460,16213e,1a1a2e&height=100&section=footer" width="100%" />
+
+*Built by [Rohit Kumar Dubey](https://www.linkedin.com/in/rohitkumardubey) · Feedback and contributions welcome*
+
+</div>
